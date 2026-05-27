@@ -1,27 +1,47 @@
-use soroban_sdk::{Address, Env, Symbol, symbol_short};
+use soroban_sdk::{symbol_short, Address, Env, Symbol};
 
 fn emit(env: &Env, name: Symbol, data: impl soroban_sdk::IntoVal<Env, soroban_sdk::Val>) {
     env.events().publish((name,), data);
 }
 
 pub fn invoice_created(env: &Env, invoice_id: u64, sme: &Address, amount: i128) {
-    emit(env, symbol_short!("INV_CRT"), (invoice_id, sme.clone(), amount));
+    emit(
+        env,
+        symbol_short!("INV_CRT"),
+        (invoice_id, sme.clone(), amount),
+    );
 }
 
 pub fn invoice_listed(env: &Env, invoice_id: u64, seller: &Address, asking_price: i128) {
-    emit(env, symbol_short!("INV_LST"), (invoice_id, seller.clone(), asking_price));
+    emit(
+        env,
+        symbol_short!("INV_LST"),
+        (invoice_id, seller.clone(), asking_price),
+    );
 }
 
 pub fn invoice_funded(env: &Env, invoice_id: u64, investor: &Address, amount: i128) {
-    emit(env, symbol_short!("INV_FND"), (invoice_id, investor.clone(), amount));
+    emit(
+        env,
+        symbol_short!("INV_FND"),
+        (invoice_id, investor.clone(), amount),
+    );
 }
 
 pub fn repayment_made(env: &Env, invoice_id: u64, payer: &Address, amount: i128) {
-    emit(env, symbol_short!("REPAY"), (invoice_id, payer.clone(), amount));
+    emit(
+        env,
+        symbol_short!("REPAY"),
+        (invoice_id, payer.clone(), amount),
+    );
 }
 
 pub fn yield_distributed(env: &Env, invoice_id: u64, investor: &Address, yield_amount: i128) {
-    emit(env, symbol_short!("YIELD"), (invoice_id, investor.clone(), yield_amount));
+    emit(
+        env,
+        symbol_short!("YIELD"),
+        (invoice_id, investor.clone(), yield_amount),
+    );
 }
 
 pub fn invoice_defaulted(env: &Env, invoice_id: u64, sme: &Address) {
@@ -33,7 +53,11 @@ pub fn listing_cancelled(env: &Env, invoice_id: u64, seller: &Address) {
 }
 
 pub fn fee_collected(env: &Env, invoice_id: u64, fee_amount: i128, token: &Address) {
-    emit(env, symbol_short!("FEE_COL"), (invoice_id, fee_amount, token.clone()));
+    emit(
+        env,
+        symbol_short!("FEE_COL"),
+        (invoice_id, fee_amount, token.clone()),
+    );
 }
 
 pub fn protocol_paused(env: &Env, by: &Address) {
@@ -42,4 +66,8 @@ pub fn protocol_paused(env: &Env, by: &Address) {
 
 pub fn protocol_unpaused(env: &Env, by: &Address) {
     emit(env, symbol_short!("UNPAUSED"), by.clone());
+}
+
+pub fn fee_withdrawn(env: &Env, token: &Address, amount: i128) {
+    emit(env, symbol_short!("FEE_WTH"), (token.clone(), amount));
 }
