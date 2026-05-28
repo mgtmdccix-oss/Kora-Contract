@@ -45,7 +45,7 @@ impl AccessControlContract {
         admin.require_auth();
         Self::require_admin(&env, &admin)?;
         if env.storage().instance().get::<_, bool>(&DataKey::Paused).unwrap_or(false) {
-            return Err(KoraError::ProtocolPaused);
+            return Err(KoraError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Paused, &true);
         events::protocol_paused(&env, &admin);
@@ -57,7 +57,7 @@ impl AccessControlContract {
         admin.require_auth();
         Self::require_admin(&env, &admin)?;
         if !env.storage().instance().get::<_, bool>(&DataKey::Paused).unwrap_or(false) {
-            return Err(KoraError::ProtocolPaused);
+            return Err(KoraError::NotInitialized);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
         events::protocol_unpaused(&env, &admin);
@@ -76,7 +76,8 @@ impl AccessControlContract {
         if role == Role::Admin {
             return Err(KoraError::Unauthorized);
         }
-        env.storage().persistent().set(&DataKey::Role(target), &role);
+        env.storage().persistent().set(&DataKey::Role(target.clone()), &role);
+        events::role_granted(&env, &target, &admin);
         Ok(())
     }
 
@@ -86,12 +87,13 @@ impl AccessControlContract {
         Self::require_admin(&env, &admin)?;
         let current_role = env.storage()
             .persistent()
-            .get::<_, Role>(&DataKey::Role(target))
+            .get::<_, Role>(&DataKey::Role(target.clone()))
             .unwrap_or(Role::None);
         if current_role == Role::Admin {
             return Err(KoraError::Unauthorized);
         }
-        env.storage().persistent().set(&DataKey::Role(target), &Role::None);
+        env.storage().persistent().set(&DataKey::Role(target.clone()), &Role::None);
+        events::role_revoked(&env, &target, &admin);
         Ok(())
     }
 
@@ -104,8 +106,8 @@ impl AccessControlContract {
         }
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         env.storage().persistent().set(&DataKey::Role(new_admin.clone()), &Role::Admin);
-        env.storage().persistent().set(&DataKey::Role(current_admin), &Role::None);
-        events::admin_transferred(&env, &new_admin);
+        env.storage().persistent().set(&DataKey::Role(current_admin.clone()), &Role::None);
+        events::admin_transferred(&env, &current_admin, &new_admin);
         Ok(())
     }
 
