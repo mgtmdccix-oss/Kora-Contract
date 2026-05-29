@@ -164,29 +164,24 @@ impl FinancingPoolContract {
             return Err(KoraError::RepaymentAlreadyMade);
         }
 
-        // Validate amount
-        if amount <= 0 {
-            return Err(KoraError::InvalidAmount);
-        }
-
-        let token_client = token::Client::new(env, token);
-        token_client.transfer(payer, &env.current_contract_address(), &amount);
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&payer, &env.current_contract_address(), &amount);
 
         pool.repaid_amount = pool
             .repaid_amount
             .checked_add(amount)
             .ok_or(KoraError::ArithmeticOverflow)?;
 
-        events::repayment_made(env, invoice_id, payer, amount);
+        events::repayment_made(&env, invoice_id, &payer, amount);
 
         if pool.repaid_amount >= pool.face_value {
             pool.is_closed = true;
             env.storage().persistent().set(&DataKey::Pool(invoice_id), &pool);
-            Self::distribute_yield(env, invoice_id, token, pool.repaid_amount, pool.face_value)?;
+            Self::distribute_yield(&env, invoice_id, &token, pool.repaid_amount, pool.face_value)?;
 
             // Mark NFT as repaid
             let nft_contract: Address = env.storage().instance().get(&DataKey::InvoiceNft).unwrap();
-            let nft_client = kora_invoice_nft::InvoiceNftContractClient::new(env, &nft_contract);
+            let nft_client = kora_invoice_nft::InvoiceNftContractClient::new(&env, &nft_contract);
             nft_client.set_repaid(&env.current_contract_address(), &invoice_id);
         } else {
             env.storage()
@@ -378,7 +373,99 @@ mod tests {
     }
 
     #[test]
-    fn test_record_position_arithmetic_overflow() {
+    fn test_record_position_zero_contribution() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+
+        let result = client.try_record_position(&admin, &1u64, &investor, &0i128, &10_000_000_000i128);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_position_contribution_exceeds_pool() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+
+        let result = client.try_record_position(&admin, &1u64, &investor, &11_000_000_000i128, &10_000_000_000i128);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_position_share_calculation() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+        let contributed = 5_000_000_000i128;
+        let total_pool = 10_000_000_000i128;
+
+        client.record_position(&admin, &1u64, &investor, &contributed, &total_pool);
+        let positions = client.get_positions(&1u64);
+        assert_eq!(positions.len(), 1);
+        
+        let position = positions.get(0).unwrap();
+        assert_eq!(position.share_bps, 5000); // 50% share
+    }
+
+    #[test]
+    fn test_record_multiple_positions() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor1 = Address::generate(&env);
+        let investor2 = Address::generate(&env);
+        let total_pool = 10_000_000_000i128;
+
+        client.record_position(&admin, &1u64, &investor1, &3_000_000_000i128, &total_pool);
+        client.record_position(&admin, &1u64, &investor2, &7_000_000_000i128, &total_pool);
+        
+        let positions = client.get_positions(&1u64);
+        assert_eq!(positions.len(), 2);
+    }
+
+    #[test]
+    fn test_position_attributes() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+        let contributed = 2_500_000_000i128;
+        let total_pool = 10_000_000_000i128;
+
+        client.record_position(&admin, &1u64, &investor, &contributed, &total_pool);
+        let positions = client.get_positions(&1u64);
+        
+        let position = positions.get(0).unwrap();
+        assert_eq!(position.investor, investor);
+        assert_eq!(position.invoice_id, 1u64);
+        assert_eq!(position.contributed, contributed);
+        assert_eq!(position.share_bps, 2500); // 25% share
+        assert_eq!(position.yield_claimed, 0);
+    }
+
+    #[test]
+    fn test_share_bps_boundary_minimal() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+        let contributed = 1i128;
+        let total_pool = 10_000_000_000i128;
+
+        client.record_position(&admin, &1u64, &investor, &contributed, &total_pool);
+        let positions = client.get_positions(&1u64);
+        
+        let position = positions.get(0).unwrap();
+        assert_eq!(position.share_bps, 0); // Rounds down to 0
+    }
+
+    #[test]
+    fn test_share_bps_boundary_full_pool() {
+        let (env, admin, nft, treasury, client) = setup();
+        let investor = Address::generate(&env);
+        let total_pool = 10_000_000_000i128;
+
+        client.record_position(&admin, &1u64, &investor, &total_pool, &total_pool);
+        let positions = client.get_positions(&1u64);
+        
+        let position = positions.get(0).unwrap();
+        assert_eq!(position.share_bps, 10000); // 100% share
+    }
+
+    #[test]
+    fn test_arithmetic_overflow_protection() {
         let (env, admin, nft, treasury, client) = setup();
         let investor = Address::generate(&env);
 
