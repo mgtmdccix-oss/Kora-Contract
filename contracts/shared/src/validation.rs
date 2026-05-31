@@ -8,7 +8,8 @@ pub fn require_non_zero_amount(amount: i128) -> Result<(), KoraError> {
     Ok(())
 }
 
-pub fn require_positive_amount(amount: i128) -> Result<(), KoraError> {
+/// Allows zero but rejects negative values.
+pub fn require_non_negative_amount(amount: i128) -> Result<(), KoraError> {
     if amount < 0 {
         return Err(KoraError::InvalidAmount);
     }
@@ -45,6 +46,14 @@ pub fn require_non_empty_bytes(b: &Bytes) -> Result<(), KoraError> {
 
 pub fn require_valid_fee_bps(bps: u32) -> Result<(), KoraError> {
     if bps > 10_000 {
+        return Err(KoraError::InvalidFeeRate);
+    }
+    Ok(())
+}
+
+/// Validates that `bps` is within [min_bps, max_bps] inclusive.
+pub fn require_valid_bps_range(bps: u32, min_bps: u32, max_bps: u32) -> Result<(), KoraError> {
+    if bps < min_bps || bps > max_bps {
         return Err(KoraError::InvalidFeeRate);
     }
     Ok(())
@@ -88,6 +97,19 @@ pub fn safe_div(a: i128, b: i128) -> Result<i128, KoraError> {
     a.checked_div(b).ok_or(KoraError::ArithmeticOverflow)
 }
 
+/// Safe multiplication with overflow check
+pub fn safe_mul(a: i128, b: i128) -> Result<i128, KoraError> {
+    a.checked_mul(b).ok_or(KoraError::ArithmeticOverflow)
+}
+
+/// Safe division, returns error on divide-by-zero or overflow
+pub fn safe_div(a: i128, b: i128) -> Result<i128, KoraError> {
+    if b == 0 {
+        return Err(KoraError::ArithmeticOverflow);
+    }
+    a.checked_div(b).ok_or(KoraError::ArithmeticOverflow)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,10 +123,10 @@ mod tests {
     }
 
     #[test]
-    fn test_require_positive_amount() {
-        assert!(require_positive_amount(-1).is_err());
-        assert!(require_positive_amount(0).is_ok());
-        assert!(require_positive_amount(1).is_ok());
+    fn test_require_non_negative_amount() {
+        assert!(require_non_negative_amount(-1).is_err());
+        assert!(require_non_negative_amount(0).is_ok());
+        assert!(require_non_negative_amount(1).is_ok());
     }
 
     #[test]
@@ -136,5 +158,13 @@ mod tests {
     fn test_safe_div() {
         assert_eq!(safe_div(200, 4).unwrap(), 50);
         assert!(safe_div(100, 0).is_err());
+    }
+
+    #[test]
+    fn test_require_valid_bps_range() {
+        assert!(require_valid_bps_range(50, 0, 1000).is_ok());
+        assert!(require_valid_bps_range(0, 0, 1000).is_ok());
+        assert!(require_valid_bps_range(1000, 0, 1000).is_ok());
+        assert!(require_valid_bps_range(1001, 0, 1000).is_err());
     }
 }
