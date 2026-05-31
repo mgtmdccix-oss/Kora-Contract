@@ -203,10 +203,17 @@ impl AccessControlContract {
 
     /// Returns the role assigned to `address`, or `Role::None` if unassigned.
     pub fn get_role(env: Env, address: Address) -> Role {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Role(address))
-            .unwrap_or(Role::None)
+        let key = DataKey::Role(address.clone());
+        if let Some(role) = env.storage().persistent().get::<_, Role>(&key) {
+            Self::bump_persistent(&env, &key);
+            return role;
+        }
+        if let Some(admin) = env.storage().instance().get::<_, Address>(&DataKey::Admin) {
+            if admin == address {
+                return Role::Admin;
+            }
+        }
+        Role::None
     }
 
     /// Returns `true` if `address` holds the given `role`.
@@ -245,6 +252,10 @@ impl AccessControlContract {
             .ok_or(KoraError::NotInitialized)?;
         if &admin != caller {
             return Err(KoraError::NotAdmin);
+        }
+        let key = DataKey::Role(caller.clone());
+        if env.storage().persistent().get::<_, Role>(&key).is_some() {
+            Self::bump_persistent(env, &key);
         }
         Ok(())
     }
@@ -1076,6 +1087,49 @@ mod tests_extended {
     }
 
     // ── get_admin ─────────────────────────────────────────────────────────────
+
+
+    #[test]
+    fn test_pause_before_init_returns_not_initialized() {
+        let (env, client) = deploy_uninit();
+        let admin = Address::generate(&env);
+        let result = client.try_pause(&admin);
+        assert_eq!(result.unwrap_err().unwrap(), KoraError::NotInitialized);
+    }
+
+    #[test]
+    fn test_grant_role_before_init_returns_not_initialized() {
+        let (env, client) = deploy_uninit();
+        let admin = Address::generate(&env);
+        let target = Address::generate(&env);
+        let result = client.try_grant_role(&admin, &target, &Role::Verifier);
+        assert_eq!(result.unwrap_err().unwrap(), KoraError::NotInitialized);
+    }
+
+    #[test]
+    fn test_revoke_role_before_init_returns_not_initialized() {
+        let (env, client) = deploy_uninit();
+        let admin = Address::generate(&env);
+        let target = Address::generate(&env);
+        let result = client.try_revoke_role(&admin, &target);
+        assert_eq!(result.unwrap_err().unwrap(), KoraError::NotInitialized);
+    }
+
+    #[test]
+    fn test_transfer_admin_before_init_returns_not_initialized() {
+        let (env, client) = deploy_uninit();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+        let result = client.try_transfer_admin(&admin, &new_admin);
+        assert_eq!(result.unwrap_err().unwrap(), KoraError::NotInitialized);
+    }
+
+    #[test]
+    fn test_get_role_falls_back_to_admin_when_role_key_missing() {
+        let (env, admin, client) = setup();
+        env.storage().persistent().remove(&DataKey::Role(admin.clone()));
+        assert_eq!(client.get_role(&admin), Role::Admin);
+    }
 
     #[test]
     fn test_get_admin_before_init_returns_not_initialized() {
